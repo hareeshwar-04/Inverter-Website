@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InvertX Batch | 10x Processor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        :root { --primary: #6366f1; --bg: #0f172a; --card: rgba(30, 41, 59, 0.7); }
+        body { 
+            font-family: 'Inter', system-ui, sans-serif; 
+            background: radial-gradient(circle at top left, #1e1b4b, #0f172a);
+            color: white; min-height: 100vh; margin: 0; padding-bottom: 50px;
+        }
+        .container { width: 95%; max-width: 1200px; margin: 40px auto; }
+        .glass-panel {
+            background: var(--card); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px; padding: 30px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+        .upload-area {
+            border: 2px dashed #475569; border-radius: 16px; padding: 40px; text-align: center; cursor: pointer; transition: 0.3s;
+        }
+        .upload-area:hover { border-color: var(--primary); background: rgba(99, 102, 241, 0.05); }
+        .batch-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 30px;
+        }
+        .image-card {
+            background: rgba(0,0,0,0.3); padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);
+            text-align: center; font-size: 0.7rem;
+        }
+        .image-card canvas { width: 100%; border-radius: 6px; margin-bottom: 8px; }
+        .controls { text-align: center; margin-top: 30px; }
+        .btn {
+            background: var(--primary); color: white; border: none; padding: 14px 32px; 
+            border-radius: 12px; font-weight: 600; cursor: pointer; transition: 0.2s;
+        }
+        .btn:disabled { background: #475569; cursor: not-allowed; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="glass-panel">
+        <header style="text-align: center; margin-bottom: 20px;">
+            <h1>Invert<span style="color: var(--primary);">X</span> Batch</h1>
+            <p style="color: #94a3b8;">Select up to 10 images at once.</p>
+        </header>
+
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <p id="status-text">Click to upload images (Max 10)</p>
+            <input type="file" id="fileInput" class="hidden" accept="image/*" multiple>
+        </div>
+
+        <div id="batchGrid" class="batch-grid"></div>
+
+        <div class="controls">
+            <button id="downloadBtn" class="btn hidden" onclick="downloadAll()">Download All as .ZIP</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const batchGrid = document.getElementById('batchGrid');
+    const downloadBtn = document.getElementById('downloadBtn');
+    let processedImages = []; // Stores blobs for zipping
+
+    fileInput.addEventListener('change', async function(e) {
+        const files = Array.from(e.target.files).slice(0, 10); // Limit to 10
+        if (files.length === 0) return;
+
+        batchGrid.innerHTML = ''; // Clear previous
+        processedImages = [];
+        downloadBtn.classList.remove('hidden');
+
+        for (const file of files) {
+            await processFile(file);
+        }
+    });
+
+    async function processFile(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const card = document.createElement('div');
+                    card.className = 'image-card';
+                    
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Maintain High-Res Resolution
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    
+                    ctx.drawImage(img, 0, 0);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data;
+
+                    // Inversion Logic
+                    for (let i = 0; i < data.length; i += 4) {
+                        data[i] = 255 - data[i];
+                        data[i+1] = 255 - data[i+1];
+                        data[i+2] = 255 - data[i+2];
+                    }
+                    ctx.putImageData(imageData, 0, 0);
+
+                    card.innerHTML = `<p>${file.name}</p>`;
+                    card.prepend(canvas);
+                    batchGrid.appendChild(card);
+
+                    // Save blob for zip
+                    canvas.toBlob((blob) => {
+                        processedImages.push({ name: `inverted-${file.name}`, blob: blob });
+                        resolve();
+                    }, 'image/png');
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function downloadAll() {
+        const zip = new JSZip();
+        processedImages.forEach(img => {
+            zip.file(img.name, img.blob);
+        });
+
+        zip.generateAsync({type: "blob"}).then((content) => {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = "inverted_batch.zip";
+            link.click();
+        });
+    }
+</script>
+
+</body>
+</html>
