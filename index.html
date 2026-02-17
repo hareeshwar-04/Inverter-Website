@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>InvertX | PDF Export</title>
+    <title>EVL Image Inverter</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         :root { --primary: #6366f1; --bg: #0f172a; --card: rgba(30, 41, 59, 0.8); }
@@ -16,41 +16,72 @@
         .container { width: 100%; max-width: 1200px; }
         .glass-panel {
             background: var(--card); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 20px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
+        header { text-align: center; margin-bottom: 20px; }
+        .evl-tag { font-size: 0.75rem; background: var(--primary); padding: 2px 8px; border-radius: 10px; vertical-align: middle; margin-left: 5px; }
+        
+        .config-box { 
+            background: rgba(255,255,255,0.05); border-radius: 15px; padding: 15px; 
+            margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+        }
+        select, label { font-size: 0.9rem; color: #cbd5e1; }
+        select { background: #1e293b; color: white; border: 1px solid #475569; padding: 8px; border-radius: 8px; width: 100%; }
+
         .upload-area {
             border: 2px dashed #475569; border-radius: 15px; padding: 30px;
-            text-align: center; cursor: pointer; background: rgba(255,255,255,0.03);
-            margin-bottom: 20px;
+            text-align: center; cursor: pointer; background: rgba(255,255,255,0.03); transition: 0.3s;
         }
+        .upload-area:hover { border-color: var(--primary); }
+        
         .batch-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); 
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); 
             gap: 15px; margin-top: 20px;
         }
         .image-card {
             background: rgba(0,0,0,0.4); padding: 10px; border-radius: 12px;
             border: 1px solid rgba(255,255,255,0.1); text-align: center;
         }
-        .image-card canvas { width: 100%; border-radius: 8px; }
-        .controls { position: sticky; bottom: 20px; width: 100%; display: flex; justify-content: center; margin-top: 20px; }
+        .image-card canvas { width: 100%; border-radius: 8px; display: block; }
+        
+        .controls { position: sticky; bottom: 20px; width: 100%; display: flex; justify-content: center; margin-top: 20px; z-index: 100; }
         .btn {
             background: var(--primary); color: white; border: none; padding: 16px 32px; 
             border-radius: 50px; font-weight: 700; cursor: pointer; box-shadow: 0 10px 20px rgba(99, 102, 241, 0.4);
+            transition: transform 0.2s;
         }
-        .hidden { display: none; }
+        .btn:active { transform: scale(0.95); }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="glass-panel">
-        <header style="text-align: center; margin-bottom: 10px;">
-            <h1 style="margin:0;">Invert<span style="color: var(--primary);">X</span> PDF</h1>
-            <p style="color: #94a3b8;">Batch convert images to an inverted PDF</p>
+        <header>
+            <h1 style="margin:0; font-size: 1.5rem;">Image Inverter <span class="evl-tag">EVL EXCLUSIVE</span></h1>
+            <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 5px;">Specialized tool for CVR EVL branch students</p>
         </header>
 
+        <div class="config-box">
+            <div>
+                <label>Mode</label>
+                <select id="invertMode">
+                    <option value="yes">Inverted Colors</option>
+                    <option value="no">Original Colors</option>
+                </select>
+            </div>
+            <div>
+                <label>PDF Layout</label>
+                <select id="layoutMode">
+                    <option value="landscape">Landscape (Full)</option>
+                    <option value="portrait">Portrait (Centered)</option>
+                </select>
+            </div>
+        </div>
+
         <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-            <p>Tap to upload images (Max 10)</p>
+            <p id="uploadPrompt">Click to upload images (Max 10)</p>
             <input type="file" id="fileInput" class="hidden" accept="image/*" multiple>
         </div>
 
@@ -59,21 +90,22 @@
 </div>
 
 <div class="controls">
-    <button id="downloadBtn" class="btn hidden" onclick="generatePDF()">Download as PDF</button>
+    <button id="downloadBtn" class="btn hidden" onclick="generatePDF()">Download EVL PDF</button>
 </div>
 
 <script>
     const fileInput = document.getElementById('fileInput');
     const batchGrid = document.getElementById('batchGrid');
     const downloadBtn = document.getElementById('downloadBtn');
-    let canvases = []; 
+    const invertMode = document.getElementById('invertMode');
+    let sourceImages = []; 
 
     fileInput.addEventListener('change', async function(e) {
         const files = Array.from(e.target.files).slice(0, 10);
         if (files.length === 0) return;
 
         batchGrid.innerHTML = ''; 
-        canvases = [];
+        sourceImages = [];
         downloadBtn.classList.remove('hidden');
 
         for (const file of files) {
@@ -87,29 +119,20 @@
             reader.onload = (event) => {
                 const img = new Image();
                 img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
+                    sourceImages.push({ img: img, name: file.name });
                     
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const data = imageData.data;
-                    for (let i = 0; i < data.length; i += 4) {
-                        data[i] = 255 - data[i];
-                        data[i+1] = 255 - data[i+1];
-                        data[i+2] = 255 - data[i+2];
-                    }
-                    ctx.putImageData(imageData, 0, 0);
-
                     const card = document.createElement('div');
                     card.className = 'image-card';
-                    card.innerHTML = `<p style="font-size:0.7rem; margin-top:5px;">${file.name}</p>`;
-                    card.prepend(canvas);
+                    const previewCanvas = document.createElement('canvas');
+                    const pCtx = previewCanvas.getContext('2d');
+                    
+                    previewCanvas.width = img.width;
+                    previewCanvas.height = img.height;
+                    pCtx.drawImage(img, 0, 0);
+                    
+                    card.innerHTML = `<p style="font-size:0.6rem; margin-top:5px; color:#94a3b8;">${file.name}</p>`;
+                    card.prepend(previewCanvas);
                     batchGrid.appendChild(card);
-
-                    canvases.push(canvas);
                     resolve();
                 };
                 img.src = event.target.result;
@@ -120,26 +143,63 @@
 
     async function generatePDF() {
         const { jsPDF } = window.jspdf;
-        // Create first page based on first image size
-        const first = canvases[0];
-        const pdf = new jsPDF({
-            orientation: first.width > first.height ? 'l' : 'p',
-            unit: 'px',
-            format: [first.width, first.height]
-        });
+        const shouldInvert = invertMode.value === 'yes';
+        const layout = document.getElementById('layoutMode').value;
+        
+        let pdf;
 
-        for (let i = 0; i < canvases.length; i++) {
-            const canvas = canvases[i];
-            const imgData = canvas.toDataURL('image/jpeg', 0.9); // Compress slightly for PDF size
+        for (let i = 0; i < sourceImages.length; i++) {
+            const item = sourceImages[i];
+            const img = item.img;
             
-            if (i > 0) {
-                pdf.addPage([canvas.width, canvas.height], canvas.width > canvas.height ? 'l' : 'p');
+            // Create a processing canvas for each page
+            const procCanvas = document.createElement('canvas');
+            const ctx = procCanvas.getContext('2d');
+            procCanvas.width = img.width;
+            procCanvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+
+            if (shouldInvert) {
+                const imageData = ctx.getImageData(0, 0, procCanvas.width, procCanvas.height);
+                const data = imageData.data;
+                for (let j = 0; j < data.length; j += 4) {
+                    data[j] = 255 - data[j];
+                    data[j+1] = 255 - data[j+1];
+                    data[j+2] = 255 - data[j+2];
+                }
+                ctx.putImageData(imageData, 0, 0);
             }
+
+            const imgData = procCanvas.toDataURL('image/jpeg', 0.85);
             
-            pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+            if (layout === 'landscape') {
+                // Option 1: Landscape (Matching image size perfectly)
+                const orient = procCanvas.width > procCanvas.height ? 'l' : 'p';
+                if (i === 0) {
+                    pdf = new jsPDF({ orientation: orient, unit: 'px', format: [procCanvas.width, procCanvas.height] });
+                } else {
+                    pdf.addPage([procCanvas.width, procCanvas.height], orient);
+                }
+                pdf.addImage(imgData, 'JPEG', 0, 0, procCanvas.width, procCanvas.height);
+            } else {
+                // Option 2: Portrait Centered (A4 Style Standard)
+                if (i === 0) {
+                    pdf = new jsPDF('p', 'mm', 'a4');
+                } else {
+                    pdf.addPage('a4', 'p');
+                }
+                const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+                const ratio = Math.min(pageWidth / procCanvas.width, pageHeight / procCanvas.height) * 0.9;
+                const w = procCanvas.width * ratio;
+                const h = procCanvas.height * ratio;
+                const x = (pageWidth - w) / 2;
+                const y = (pageHeight - h) / 2;
+                pdf.addImage(imgData, 'JPEG', x, y, w, h);
+            }
         }
 
-        pdf.save("inverted_images.pdf");
+        pdf.save(`EVL_Batch_Export.pdf`);
     }
 </script>
 
